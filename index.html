@@ -566,15 +566,15 @@ footer {
 
         <div class="hero-id">
           <div class="id-modelo-label">Cliente / País</div>
-          <div class="id-cliente">Bimbo del Peru</div>
+          <div class="id-cliente" id="clienteName">Bimbo del Peru</div>
           <div class="id-pais">
             <span class="id-flag">🇵🇪</span>
-            <span class="id-pais-info">Peru · EN · L. América</span>
+            <span class="id-pais-info" id="paisInfo">Peru · EN · L. América</span>
           </div>
 
           <div class="id-cliente-label" style="margin-top:clamp(10px,2vh,20px);">Modelo / Equipamento</div>
-          <div class="id-modelo">MWS715 SDS EXD DRD</div>
-          <div class="id-lote">Lote &nbsp;·&nbsp; 26L_1</div>
+          <div class="id-modelo" id="modeloName">MWS715 SDS EXD DRD</div>
+          <div class="id-lote" id="loteName">Lote · 26L_1</div>
         </div>
       </div>
 
@@ -657,6 +657,115 @@ footer {
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+/* ── GOOGLE SHEETS / PM1 ── */
+const SHEET_ID = '1GQUB52a2gKR429bjqJrNkbP5rjR7Z_4v85z9M7_Cr8Y';
+const SHEET_TAB = 'PM1';
+const SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(SHEET_TAB)}`;
+
+function normalizeHeader(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function parseCSV(csv) {
+  const rows = [];
+  let current = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < csv.length; i++) {
+    const char = csv[i];
+    const next = csv[i + 1];
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (next === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += char;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = true;
+      continue;
+    }
+
+    if (char === ',') {
+      current.push(field);
+      field = '';
+      continue;
+    }
+
+    if (char === '\n') {
+      current.push(field);
+      rows.push(current);
+      current = [];
+      field = '';
+      continue;
+    }
+
+    if (char === '\r') {
+      continue;
+    }
+
+    field += char;
+  }
+
+  if (field !== '' || current.length > 0) {
+    current.push(field);
+    rows.push(current);
+  }
+
+  return rows;
+}
+
+async function loadSheet() {
+  try {
+    const response = await fetch(SHEET_CSV_URL);
+    if (!response.ok) throw new Error(`Failed to load sheet (${response.status})`);
+    const text = await response.text();
+    const rows = parseCSV(text).filter(row => row.length > 1);
+    if (rows.length < 2) return null;
+
+    const headers = rows[0].map(normalizeHeader);
+    const data = rows.slice(1).map(row => {
+      return headers.reduce((obj, header, index) => {
+        obj[header] = row[index] || '';
+        return obj;
+      }, {});
+    });
+
+    return data[0];
+  } catch (err) {
+    console.warn('Google Sheets load error', err);
+    return null;
+  }
+}
+
+function hydrateSheetFields(sheetRow) {
+  if (!sheetRow) return;
+  const cliente = sheetRow['CLIENTE'];
+  const pais = sheetRow['PAIS'];
+  const modelo = sheetRow['MODELO'];
+  const lote = sheetRow['LOTE'];
+
+  if (cliente) document.getElementById('clienteName').textContent = cliente;
+  if (pais) document.getElementById('paisInfo').textContent = pais;
+  if (modelo) document.getElementById('modeloName').textContent = modelo;
+  if (lote) document.getElementById('loteName').textContent = `Lote · ${lote}`;
+}
+
+loadSheet().then(hydrateSheetFields);
+
 /* ── CORES ── */
 const ec = v => v >= 75 ? '#00ff87' : v >= 40 ? '#00d4ff' : '#ffaa00';
 const bc = v => v === 100 ? '#00ff87' : v > 0 ? '#00d4ff' : null;
